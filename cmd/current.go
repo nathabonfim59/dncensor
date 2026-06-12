@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/nathabonfim59/dncensor/internal/provider"
 	"github.com/nathabonfim59/dncensor/internal/stack"
 )
 
@@ -26,15 +27,32 @@ var currentCmd = &cobra.Command{
 			return fmt.Errorf("get current DNS: %w", err)
 		}
 
+		detectedProvider, detectedFlavor, _ := provider.DetectCurrentProvider(s)
+
 		if jsonFlag {
-			data := map[string]string{
+			data := map[string]interface{}{
 				"stack":  string(s.Type()),
 				"config": dnsStr,
+			}
+			if detectedProvider != nil {
+				data["provider"] = string(detectedProvider.Type)
+				if detectedFlavor != nil {
+					data["flavor"] = detectedFlavor.FlavorName
+				}
 			}
 			out, _ := json.MarshalIndent(data, "", "  ")
 			fmt.Println(string(out))
 		} else {
 			fmt.Printf("DNS Stack: %s\n", s.Type())
+			if detectedProvider != nil {
+				line := fmt.Sprintf("Detected Provider: %s", detectedProvider.Name)
+				if detectedFlavor != nil {
+					line += fmt.Sprintf(" > %s", detectedFlavor.Display)
+				}
+				fmt.Println(line)
+			} else {
+				fmt.Println("Detected Provider: Unknown")
+			}
 			fmt.Println("---")
 			fmt.Print(dnsStr)
 		}

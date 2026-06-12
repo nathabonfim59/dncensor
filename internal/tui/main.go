@@ -34,6 +34,9 @@ type Model struct {
 	selectedFlavor   *provider.DNSFlavor
 	useDOH           bool
 
+	currentProvider *provider.DNSProvider
+	currentFlavor   *provider.DNSFlavor
+
 	flavorIdx int
 
 	result *dns.ApplyResult
@@ -45,7 +48,7 @@ type Model struct {
 }
 
 func NewModel(s stack.Stack, backupDir string) Model {
-	return Model{
+	m := Model{
 		state:         stateMainMenu,
 		stack:         s,
 		backupDir:     backupDir,
@@ -53,6 +56,8 @@ func NewModel(s stack.Stack, backupDir string) Model {
 		providers:     provider.AllProviders(),
 		selectedIdx:   0,
 	}
+	m.currentProvider, m.currentFlavor, _ = provider.DetectCurrentProvider(s)
+	return m
 }
 
 func (m Model) Init() tea.Cmd {
@@ -232,6 +237,8 @@ func (m Model) mainMenuView() string {
 	sections := []string{
 		m.renderHeader(),
 		"",
+		m.renderCurrentProvider(),
+		"",
 		m.renderProviderList(),
 		"",
 		m.renderApplyButton(),
@@ -251,6 +258,17 @@ func (m Model) renderHeader() string {
 	title := TitleStyle.Render("🛡 dncensor — DNS Provider Switcher")
 	subtitle := DimmedStyle.Render(fmt.Sprintf("Detected stack: %s", m.stack.Type()))
 	return lipgloss.JoinVertical(lipgloss.Left, title, subtitle)
+}
+
+func (m Model) renderCurrentProvider() string {
+	if m.currentProvider == nil {
+		return DimmedStyle.Render("Current DNS: Unknown")
+	}
+	line := fmt.Sprintf("Current DNS: %s", m.currentProvider.Name)
+	if m.currentFlavor != nil {
+		line += fmt.Sprintf(" > %s", m.currentFlavor.Display)
+	}
+	return DimmedStyle.Render(line)
 }
 
 func (m Model) renderProviderList() string {
