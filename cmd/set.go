@@ -33,7 +33,7 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		requireRoot("set")
 
-		if err := config.Init(); err != nil {
+		if err := initConfig(); err != nil {
 			return fmt.Errorf("config init: %w", err)
 		}
 
