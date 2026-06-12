@@ -49,9 +49,8 @@ list-providers --json, -j
 - **NetworkManager**: Prefers ethernet over wifi for active connection selection.
 - **resolvconf**: Uses atomic write (temp file + rename). Preserves `search`/`domain` lines from existing config.
 
-## Dependencies
+## Using external libraries
 
-- `bubbletea` v1.3 — TUI (older `tea.Model` interface, no `tea.Program` options)
-- `lipgloss` v1.1 — terminal styling
-- `cobra` v1.10 — CLI framework
-- No yaml/json parsers beyond stdlib, no test deps.
+- **Find existing deps**: check `go.mod` and `go.sum`. When unsure if a library is already used, grep imports in the relevant `internal/` package.
+- **Add a new dep**: `go get <module>@<version>` then `go mod tidy`. Keep it minimal — this project uses bubbletea, lipgloss, and cobra; there are no yaml/json parsers or test frameworks.
+- **Understand usage**: read the existing callers in the codebase (e.g., `internal/tui/` for bubbletea patterns, `cmd/` for cobra) and run `go doc ./internal/... .Symbol` to inspect any exported API before writing new code.
