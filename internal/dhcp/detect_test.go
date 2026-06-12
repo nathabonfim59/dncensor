@@ -129,54 +129,37 @@ func TestParseDHClientContent(t *testing.T) {
 func TestParseSystemdNetworkdContent(t *testing.T) {
 	tests := []struct {
 		name   string
-		iface  string
 		data   string
 		want   []string
 		wantOK bool
 	}{
 		{
-			name:   "matching interface with DNS",
-			iface:  "eth0",
-			data:   "INTERFACE=eth0\nDNS=192.168.1.1 8.8.8.8\n",
-			want:   []string{"192.168.1.1", "8.8.8.8"},
+			name:   "real systemd-networkd lease format",
+			data:   "ADDRESS=192.168.0.100\nDNS=187.45.96.96 187.45.97.97\n",
+			want:   []string{"187.45.96.96", "187.45.97.97"},
 			wantOK: true,
 		},
 		{
-			name:   "non-matching interface",
-			iface:  "wlan0",
-			data:   "INTERFACE=eth0\nDNS=192.168.1.1\n",
-			want:   nil,
-			wantOK: false,
-		},
-		{
 			name:   "no DNS field",
-			iface:  "eth0",
-			data:   "INTERFACE=eth0\nROUTES=...\n",
+			data:   "ADDRESS=192.168.0.100\nROUTER=192.168.0.1\n",
 			want:   nil,
 			wantOK: false,
 		},
 		{
 			name:   "empty DNS",
-			iface:  "eth0",
-			data:   "INTERFACE=eth0\nDNS=\n",
+			data:   "ADDRESS=192.168.0.100\nDNS=\n",
 			want:   nil,
 			wantOK: false,
 		},
 		{
 			name:   "empty data",
-			iface:  "eth0",
 			data:   "",
 			want:   nil,
 			wantOK: false,
 		},
 		{
-			name:   "real systemd-networkd lease excerpt",
-			iface:  "eth0",
-			data: `INTERFACE=eth0
-DNS=1.1.1.1 1.0.0.1
-DOMAINS=~
-NTP=0.pool.ntp.org
-`,
+			name:   "legacy format with INTERFACE",
+			data:   "INTERFACE=eth0\nDNS=1.1.1.1 1.0.0.1\n",
 			want:   []string{"1.1.1.1", "1.0.0.1"},
 			wantOK: true,
 		},
@@ -184,7 +167,7 @@ NTP=0.pool.ntp.org
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := parseSystemdNetworkdContent(tt.iface, []byte(tt.data))
+			got, ok := parseSystemdNetworkdContent([]byte(tt.data))
 			if ok != tt.wantOK {
 				t.Errorf("parseSystemdNetworkdContent() ok = %v, want %v", ok, tt.wantOK)
 			}

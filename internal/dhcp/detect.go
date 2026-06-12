@@ -18,7 +18,7 @@ func DetectOriginalDNS() ([]string, error) {
 	candidates := []func(string) ([]string, bool){
 		parseDHCPCD,
 		parseDHClient,
-		parseSystemdNetworkd,
+		func(_ string) ([]string, bool) { return parseSystemdNetworkd() },
 	}
 
 	for _, fn := range candidates {
@@ -110,7 +110,7 @@ func parseDHClientContent(data []byte) ([]string, bool) {
 	return nil, false
 }
 
-func parseSystemdNetworkd(iface string) ([]string, bool) {
+func parseSystemdNetworkd() ([]string, bool) {
 	entries, err := os.ReadDir("/run/systemd/netif/leases")
 	if err != nil {
 		return nil, false
@@ -125,7 +125,7 @@ func parseSystemdNetworkd(iface string) ([]string, bool) {
 			continue
 		}
 
-		if ips, ok := parseSystemdNetworkdContent(iface, data); ok {
+		if ips, ok := parseSystemdNetworkdContent(data); ok {
 			return ips, true
 		}
 	}
@@ -133,13 +133,8 @@ func parseSystemdNetworkd(iface string) ([]string, bool) {
 	return nil, false
 }
 
-func parseSystemdNetworkdContent(iface string, data []byte) ([]string, bool) {
+func parseSystemdNetworkdContent(data []byte) ([]string, bool) {
 	content := string(data)
-
-	if !strings.Contains(content, fmt.Sprintf("INTERFACE=%s", iface)) &&
-		!strings.Contains(content, fmt.Sprintf("INTERFACE=%s\n", iface)) {
-		return nil, false
-	}
 
 	re := regexp.MustCompile(`(?m)^DNS=(.*)$`)
 	matches := re.FindStringSubmatch(content)
