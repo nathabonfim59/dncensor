@@ -2,13 +2,14 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/charmbracelet/bubbletea"
 	"github.com/nathabonfim59/dncensor/internal/backup"
 	"github.com/nathabonfim59/dncensor/internal/dns"
 	"github.com/nathabonfim59/dncensor/internal/provider"
 	"github.com/nathabonfim59/dncensor/internal/stack"
+
+	"charm.land/lipgloss/v2"
 )
 
 type state int
@@ -33,16 +34,12 @@ type Model struct {
 	selectedFlavor   *provider.DNSFlavor
 	useDOH           bool
 
-	// Flavor menu
 	flavorIdx int
 
-	// Result
 	result *dns.ApplyResult
 
-	// Error
 	err error
 
-	// Window
 	width  int
 	height int
 }
@@ -61,6 +58,8 @@ func NewModel(s stack.Stack, backupDir string) Model {
 func (m Model) Init() tea.Cmd {
 	return nil
 }
+
+// ── Update ──────────────────────────────────────────────────────────────
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -101,8 +100,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "down", "j":
 			switch m.state {
 			case stateMainMenu:
-				// providers + apply button
-				maxIdx := len(m.providers) // apply button is last
+				maxIdx := len(m.providers)
 				if m.selectedIdx < maxIdx {
 					m.selectedIdx++
 				}
@@ -157,9 +155,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleMainMenuEnter() (tea.Model, tea.Cmd) {
-	// Check if we're on the apply button (last item)
 	if m.selectedIdx == len(m.providers) {
-		// Apply
 		if m.selectedProvider == nil {
 			m.err = fmt.Errorf("no provider selected")
 			return m, nil
@@ -171,14 +167,13 @@ func (m Model) handleMainMenuEnter() (tea.Model, tea.Cmd) {
 	p := m.providers[m.selectedIdx]
 	m.selectedProvider = p
 
-	if p.SupportsFlavors() && m.selectedIdx == 1 { // CloudFlare is index 1
+	if p.SupportsFlavors() {
 		m.flavorIdx = 0
 		m.selectedFlavor = nil
 		m.state = stateFlavorMenu
 		return m, nil
 	}
 
-	// For ISP and Google, just select (no flavor menu)
 	m.selectedFlavor = nil
 	return m, nil
 }
@@ -200,172 +195,226 @@ func (m Model) applyDNS() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *Model) hasBackup() bool {
+	_, err := m.backupManager.Latest(string(m.stack.Type()))
+	return err == nil
+}
+
+// ── View ────────────────────────────────────────────────────────────────
+
 func (m Model) View() string {
+	w, h := m.width, m.height
+	if w == 0 {
+		w = 80
+	}
+	if h == 0 {
+		h = 24
+	}
+
 	switch m.state {
 	case stateMainMenu:
-		return m.mainMenuView()
+		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, m.mainMenuView())
 	case stateFlavorMenu:
-		return m.flavorMenuView()
+		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, m.flavorMenuView())
 	case stateConfirm:
-		return m.confirmView()
+		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, m.confirmView())
 	case stateResult:
-		return m.resultView()
+		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, m.resultView())
 	case stateExiting:
 		return ""
 	}
 	return ""
 }
 
+// ── Main menu ───────────────────────────────────────────────────────────
+
 func (m Model) mainMenuView() string {
-	var b strings.Builder
+	sections := []string{
+		m.renderHeader(),
+		"",
+		m.renderProviderList(),
+		"",
+		m.renderApplyButton(),
+		"",
+		m.renderDohToggle(),
+		"",
+		m.renderSelectionInfo(),
+		m.renderError(),
+		HintStyle.Render("↑/↓ navigate · enter select · tab toggle DoH · a apply · q quit"),
+	}
 
-	b.WriteString(TitleStyle.Render(fmt.Sprintf(" 🛡 %s — DNS Provider Switcher\n\n", "dncensor")))
-	b.WriteString(LabelStyle.Render(fmt.Sprintf("Detected stack: %s\n\n", m.stack.Type())))
+	body := lipgloss.JoinVertical(lipgloss.Left, sections...)
+	return CardStyle.Render(body)
+}
 
-	// Provider list
-	b.WriteString(LabelStyle.Render("Select DNS Provider:\n"))
+func (m Model) renderHeader() string {
+	title := TitleStyle.Render("🛡 dncensor — DNS Provider Switcher")
+	subtitle := DimmedStyle.Render(fmt.Sprintf("Detected stack: %s", m.stack.Type()))
+	return lipgloss.JoinVertical(lipgloss.Left, title, subtitle)
+}
+
+func (m Model) renderProviderList() string {
+	var items []string
 	for i, p := range m.providers {
-		cursor := "  "
-		selected := " "
+		cursor, radio := " ", "○"
 		if i == m.selectedIdx {
-			cursor = "▸ "
+			cursor = "▸"
 		}
 		if m.selectedProvider == p {
-			selected = "●"
-		} else {
-			selected = "○"
+			radio = "●"
 		}
+		text := fmt.Sprintf("%s %s %s", cursor, radio, p.Name)
 
-		// Grey out ISP if no backup
-		entry := fmt.Sprintf("%s %s %s", cursor, selected, p.Name)
-		if p.Type == provider.ProviderISP && m.backupManager.Exists(string(m.stack.Type())) == false {
-			// Try to check if backup exists by scanning
-			if !m.hasBackup() {
-				b.WriteString(DimmedStyle.Render(fmt.Sprintf("%s %s %s (no backup)", cursor, "○", p.Name)))
-				b.WriteString("\n")
-				continue
-			}
+		if p.Type == provider.ProviderISP && !m.hasBackup() {
+			items = append(items, ItemDimmedStyle.Render(text+" (no backup)"))
+			continue
 		}
-
 		if i == m.selectedIdx {
-			b.WriteString(SelectedStyle.Render(entry))
+			items = append(items, ItemSelectedStyle.Render(text))
 		} else {
-			b.WriteString(NormalStyle.Render(entry))
+			items = append(items, ItemNormalStyle.Render(text))
 		}
-		b.WriteString("\n")
 	}
+	list := lipgloss.JoinVertical(lipgloss.Left, items...)
+	return lipgloss.JoinVertical(lipgloss.Left,
+		HeadingStyle.Render("Select DNS Provider:"),
+		list,
+	)
+}
 
-	// Apply button
-	b.WriteString("\n")
-	applyText := "  [ Apply Configuration ]"
-	if len(m.providers) == m.selectedIdx {
-		b.WriteString(SelectedStyle.Render(applyText))
-	} else {
-		b.WriteString(NormalStyle.Render(applyText))
+func (m Model) renderApplyButton() string {
+	if m.selectedIdx == len(m.providers) {
+		return lipgloss.PlaceHorizontal(26, lipgloss.Center,
+			ApplyBtnStyle.Render("Apply Configuration"))
 	}
+	return lipgloss.PlaceHorizontal(26, lipgloss.Center,
+		ApplyBtnDimmedStyle.Render("Apply Configuration"))
+}
 
-	// DoH toggle
-	b.WriteString("\n\n")
-	dohLabel := "  Use DNS-over-HTTPS (DoH)"
+func (m Model) renderDohToggle() string {
+	text := "Use DNS-over-HTTPS (DoH)"
 	if m.useDOH {
-		dohLabel = CheckboxChecked.Render("  ☑ Use DNS-over-HTTPS (DoH)")
-	} else {
-		dohLabel = CheckboxStyle.Render("  ☐ Use DNS-over-HTTPS (DoH)")
+		return CheckOnStyle.Render("☑ " + text)
 	}
-	b.WriteString(dohLabel)
-	b.WriteString("\n")
-
-	// Show selected provider info
-	if m.selectedProvider != nil {
-		b.WriteString("\n")
-		b.WriteString(DimmedStyle.Render(fmt.Sprintf("  Selected: %s", m.selectedProvider.Name)))
-		if m.selectedFlavor != nil {
-			b.WriteString(DimmedStyle.Render(fmt.Sprintf(" > %s", m.selectedFlavor.Display)))
-		}
-		b.WriteString("\n")
-	}
-
-	if m.err != nil {
-		b.WriteString("\n")
-		b.WriteString(ErrorStyle.Render(fmt.Sprintf("  Error: %s", m.err)))
-		m.err = nil
-	}
-
-	b.WriteString("\n")
-	b.WriteString(HintStyle.Render("  ↑/↓ navigate • enter select • tab toggle DoH • a apply • q quit"))
-
-	return BorderStyle.Render(b.String())
+	return CheckOffStyle.Render("☐ " + text)
 }
 
-func (m Model) hasBackup() bool {
-	_, err := m.backupManager.Latest(string(m.stack.Type()))
-	return err == nil
+func (m Model) renderSelectionInfo() string {
+	if m.selectedProvider == nil {
+		return ""
+	}
+	info := fmt.Sprintf("Selected: %s", m.selectedProvider.Name)
+	if m.selectedFlavor != nil {
+		info += fmt.Sprintf(" > %s", m.selectedFlavor.Display)
+	}
+	return DimmedStyle.Render(info)
 }
+
+func (m Model) renderError() string {
+	if m.err == nil {
+		return ""
+	}
+	msg := fmt.Sprintf("Error: %s", m.err)
+	m.err = nil
+	return ErrorStyle.Render(msg)
+}
+
+// ── Flavor menu ─────────────────────────────────────────────────────────
 
 func (m Model) flavorMenuView() string {
-	var b strings.Builder
-
-	b.WriteString(TitleStyle.Render(fmt.Sprintf(" ☁ %s — Choose Flavor\n\n", "CloudFlare")))
-
-	b.WriteString(LabelStyle.Render("Select flavor:\n"))
-	for i, f := range m.selectedProvider.Flavors {
-		cursor := "  "
-		if i == m.flavorIdx {
-			cursor = "▸ "
-		}
-		entry := fmt.Sprintf("%s %s (%s)", cursor, f.Display, f.PrimaryDNS)
-
-		if i == m.flavorIdx {
-			b.WriteString(SelectedStyle.Render(entry))
-		} else {
-			b.WriteString(NormalStyle.Render(entry))
-		}
-		b.WriteString("\n")
-		b.WriteString(DimmedStyle.Render(fmt.Sprintf("    %s\n", f.Description)))
+	sections := []string{
+		TitleStyle.Render("☁ CloudFlare — Choose Flavor"),
+		"",
+		HeadingStyle.Render("Select flavor:"),
+		m.renderFlavorList(),
+		"",
+		HintStyle.Render("↑/↓ navigate · enter select · esc back"),
 	}
 
-	b.WriteString("\n")
-	b.WriteString(HintStyle.Render("  ↑/↓ navigate • enter select • esc back"))
-
-	return BorderStyle.Render(b.String())
+	body := lipgloss.JoinVertical(lipgloss.Left, sections...)
+	return CardStyle.Render(body)
 }
 
-func (m Model) confirmView() string {
-	var b strings.Builder
+func (m Model) renderFlavorList() string {
+	var items []string
+	for i, f := range m.selectedProvider.Flavors {
+		prefix := "  "
+		if i == m.flavorIdx {
+			prefix = "▸ "
+		}
+		nameLine := fmt.Sprintf("%s%s (%s)", prefix, f.Display, f.PrimaryDNS)
+		descLine := fmt.Sprintf("  %s", f.Description)
 
-	b.WriteString(TitleStyle.Render(" ⚡ Confirm DNS Change\n\n"))
-
-	b.WriteString(fmt.Sprintf("%s %s\n", LabelStyle.Render("Provider:"), ValueStyle.Render(m.selectedProvider.Name)))
-	if m.selectedFlavor != nil {
-		b.WriteString(fmt.Sprintf("%s %s\n", LabelStyle.Render("Flavor:"), ValueStyle.Render(m.selectedFlavor.Display)))
+		nameStyle := ItemNormalStyle
+		if i == m.flavorIdx {
+			nameStyle = ItemSelectedStyle
+		}
+		entry := lipgloss.JoinVertical(lipgloss.Left,
+			nameStyle.Render(nameLine),
+			DimmedStyle.Render(descLine),
+		)
+		items = append(items, entry)
 	}
-	b.WriteString(fmt.Sprintf("%s %v\n", LabelStyle.Render("DoH:"), ValueStyle.Render(fmt.Sprintf("%v", m.useDOH))))
+	return lipgloss.JoinVertical(lipgloss.Left, items...)
+}
 
+// ── Confirm ─────────────────────────────────────────────────────────────
+
+func (m Model) confirmView() string {
 	primary, secondary, _, _ := m.selectedProvider.Resolve("", m.useDOH)
 	if m.selectedFlavor != nil {
 		primary, secondary, _, _ = m.selectedProvider.Resolve(m.selectedFlavor.FlavorName, m.useDOH)
 	}
-	b.WriteString(fmt.Sprintf("%s %s / %s\n", LabelStyle.Render("DNS Servers:"), ValueStyle.Render(primary), ValueStyle.Render(secondary)))
 
-	b.WriteString("\n")
-	b.WriteString(LabelStyle.Render("Press enter to apply, esc to cancel"))
+	rows := []string{
+		m.renderConfirmRow("Provider:", m.selectedProvider.Name),
+	}
+	if m.selectedFlavor != nil {
+		rows = append(rows, m.renderConfirmRow("Flavor:", m.selectedFlavor.Display))
+	}
+	rows = append(rows,
+		m.renderConfirmRow("DoH:", fmt.Sprintf("%v", m.useDOH)),
+		m.renderConfirmRow("DNS Servers:", fmt.Sprintf("%s / %s", primary, secondary)),
+	)
 
-	return BorderStyle.Render(b.String())
-}
-
-func (m Model) resultView() string {
-	var b strings.Builder
-
-	if m.result.Success {
-		b.WriteString(SuccessStyle.Render(" ✓ DNS Configuration Applied\n\n"))
-		b.WriteString(ValueStyle.Render(m.result.Message))
-	} else {
-		b.WriteString(ErrorStyle.Render(" ✗ Failed to Apply DNS\n\n"))
-		b.WriteString(ValueStyle.Render(m.result.Message))
+	sections := []string{
+		TitleStyle.Render("⚡ Confirm DNS Change"),
+		"",
+		lipgloss.JoinVertical(lipgloss.Left, rows...),
+		"",
+		HeadingStyle.Render("Press enter to apply, esc to cancel"),
 	}
 
-	b.WriteString("\n\n")
-	b.WriteString(HintStyle.Render("  enter • Back to menu   q • Quit"))
+	body := lipgloss.JoinVertical(lipgloss.Left, sections...)
+	return CardStyle.Render(body)
+}
 
-	return BorderStyle.Render(b.String())
+func (m Model) renderConfirmRow(label, value string) string {
+	return lipgloss.JoinHorizontal(lipgloss.Top,
+		RowLabelStyle.Render(label),
+		"  ",
+		ValueStyle.Render(value),
+	)
+}
+
+// ── Result ──────────────────────────────────────────────────────────────
+
+func (m Model) resultView() string {
+	var title string
+	if m.result.Success {
+		title = SuccessStyle.Render("✓ DNS Configuration Applied")
+	} else {
+		title = ErrorStyle.Render("✗ Failed to Apply DNS")
+	}
+
+	sections := []string{
+		title,
+		"",
+		ValueStyle.Render(m.result.Message),
+		"",
+		HintStyle.Render("enter · Back to menu   q · Quit"),
+	}
+
+	body := lipgloss.JoinVertical(lipgloss.Left, sections...)
+	return CardStyle.Render(body)
 }
