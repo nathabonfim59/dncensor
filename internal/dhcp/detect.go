@@ -58,17 +58,23 @@ func parseDHCPCD(iface string) ([]string, bool) {
 		if err != nil {
 			continue
 		}
-
-		re := regexp.MustCompile(`option domain_name_servers\s+(.+)`)
-		matches := re.FindStringSubmatch(string(data))
-		if len(matches) >= 2 {
-			ips := strings.Fields(matches[1])
-			if len(ips) > 0 {
-				return ips, true
-			}
+		if ips, ok := parseDHCPCDContent(data); ok {
+			return ips, true
 		}
 	}
 
+	return nil, false
+}
+
+func parseDHCPCDContent(data []byte) ([]string, bool) {
+	re := regexp.MustCompile(`option domain_name_servers\s+(.+)`)
+	matches := re.FindStringSubmatch(string(data))
+	if len(matches) >= 2 {
+		ips := strings.Fields(matches[1])
+		if len(ips) > 0 {
+			return ips, true
+		}
+	}
 	return nil, false
 }
 
@@ -78,7 +84,10 @@ func parseDHClient(iface string) ([]string, bool) {
 	if err != nil {
 		return nil, false
 	}
+	return parseDHClientContent(data)
+}
 
+func parseDHClientContent(data []byte) ([]string, bool) {
 	re := regexp.MustCompile(`option domain-name-servers\s+([^;]+);`)
 	matches := re.FindStringSubmatch(string(data))
 	if len(matches) >= 2 {
@@ -116,20 +125,28 @@ func parseSystemdNetworkd(iface string) ([]string, bool) {
 			continue
 		}
 
-		content := string(data)
-
-		if !strings.Contains(content, fmt.Sprintf("INTERFACE=%s", iface)) &&
-			!strings.Contains(content, fmt.Sprintf("INTERFACE=%s\n", iface)) {
-			continue
+		if ips, ok := parseSystemdNetworkdContent(iface, data); ok {
+			return ips, true
 		}
+	}
 
-		re := regexp.MustCompile(`(?m)^DNS=(.*)$`)
-		matches := re.FindStringSubmatch(content)
-		if len(matches) >= 2 {
-			ips := strings.Fields(matches[1])
-			if len(ips) > 0 {
-				return ips, true
-			}
+	return nil, false
+}
+
+func parseSystemdNetworkdContent(iface string, data []byte) ([]string, bool) {
+	content := string(data)
+
+	if !strings.Contains(content, fmt.Sprintf("INTERFACE=%s", iface)) &&
+		!strings.Contains(content, fmt.Sprintf("INTERFACE=%s\n", iface)) {
+		return nil, false
+	}
+
+	re := regexp.MustCompile(`(?m)^DNS=(.*)$`)
+	matches := re.FindStringSubmatch(content)
+	if len(matches) >= 2 {
+		ips := strings.Fields(matches[1])
+		if len(ips) > 0 {
+			return ips, true
 		}
 	}
 

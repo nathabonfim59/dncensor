@@ -27,17 +27,22 @@ func (s *resolvConfStack) Detect() bool {
 }
 
 func (s *resolvConfStack) resolvePath() (string, error) {
-	target, err := os.Readlink("/etc/resolv.conf")
+	return resolveResolvconfPath("/etc")
+}
+
+func resolveResolvconfPath(baseDir string) (string, error) {
+	resolvPath := filepath.Join(baseDir, "resolv.conf")
+	target, err := os.Readlink(resolvPath)
 	if err != nil {
 		// Not a symlink
-		return "/etc/resolv.conf", nil
+		return resolvPath, nil
 	}
 	if !strings.HasPrefix(target, "/") {
-		target = filepath.Join("/etc", target)
+		target = filepath.Join(baseDir, target)
 	}
 	// If it points to systemd-resolved or NM managed file, we shouldn't be here
 	if strings.Contains(target, "/run/systemd/resolve") || strings.Contains(target, "/run/NetworkManager") {
-		return "/etc/resolv.conf", nil
+		return resolvPath, nil
 	}
 	return target, nil
 }

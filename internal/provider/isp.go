@@ -2,8 +2,6 @@ package provider
 
 import (
 	"strings"
-
-	"github.com/nathabonfim59/dncensor/internal/dhcp"
 )
 
 func NewISP() *DNSProvider {
@@ -14,7 +12,7 @@ func NewISP() *DNSProvider {
 }
 
 func ISPDescribeDNS() (string, error) {
-	ips, err := dhcp.DetectOriginalDNS()
+	ips, err := detectDHCPDNS()
 	if err != nil {
 		return "", err
 	}

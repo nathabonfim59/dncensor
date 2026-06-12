@@ -7,6 +7,9 @@ import (
 	"github.com/nathabonfim59/dncensor/internal/dhcp"
 )
 
+// overridable in tests
+var detectDHCPDNS = dhcp.DetectOriginalDNS
+
 type ProviderType string
 
 const (
@@ -49,7 +52,7 @@ func (p *DNSProvider) FindFlavor(name string) *DNSFlavor {
 
 func (p *DNSProvider) Resolve(flavorName string, useDOH bool) (primary, secondary, dohEndpoint string, err error) {
 	if p.Type == ProviderISP {
-		ips, err := dhcp.DetectOriginalDNS()
+		ips, err := detectDHCPDNS()
 		if err != nil {
 			return "", "", "", fmt.Errorf("detect ISP DNS from DHCP: %w", err)
 		}
@@ -98,7 +101,7 @@ func (p *DNSProvider) HasDynamicDNS() bool {
 
 func (p *DNSProvider) DescribeDNS(flavorName string) string {
 	if p.Type == ProviderISP {
-		ips, err := dhcp.DetectOriginalDNS()
+		ips, err := detectDHCPDNS()
 		if err != nil {
 			return "Unknown (DHCP detection failed)"
 		}

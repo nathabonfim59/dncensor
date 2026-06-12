@@ -1,4 +1,4 @@
-.PHONY: all build build-dev vet tidy clean
+.PHONY: all build build-dev vet tidy test clean
 
 all: build vet
 
@@ -10,6 +10,9 @@ build-dev:
 
 vet:
 	go vet ./...
+
+test:
+	go test ./... -v
 
 tidy:
 	go mod tidy
