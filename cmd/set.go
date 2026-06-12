@@ -31,10 +31,7 @@ Examples:
   dncensor set -p google
   dncensor set -p isp`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if os.Geteuid() != 0 {
-			fmt.Println("dncensor needs root to change DNS. Please re-run with: sudo dncensor set ...")
-			os.Exit(1)
-		}
+		requireRoot("set")
 
 		if err := config.Init(); err != nil {
 			return fmt.Errorf("config init: %w", err)

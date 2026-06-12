@@ -1,11 +1,12 @@
-BINARY := dncensor
+.PHONY: all build build-dev vet tidy clean
 
-.PHONY: all build vet tidy clean run current list
-
-all: tidy vet build
+all: build vet
 
 build:
-	go build -o $(BINARY) .
+	go build -o dncensor .
+
+build-dev:
+	go build -tags dev -o dncensor-dev .
 
 vet:
 	go vet ./...
@@ -14,13 +15,4 @@ tidy:
 	go mod tidy
 
 clean:
-	rm -f $(BINARY)
-
-run: build
-	sudo ./$(BINARY)
-
-current:
-	./$(BINARY) current
-
-list:
-	./$(BINARY) list-providers
+	rm -f dncensor dncensor-dev

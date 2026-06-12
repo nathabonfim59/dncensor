@@ -25,10 +25,7 @@ Examples:
   dncensor current                   # Show current DNS
   dncensor list-providers            # List available providers`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if os.Geteuid() != 0 {
-			fmt.Println("dncensor needs root to change DNS. Please re-run with: sudo dncensor")
-			os.Exit(1)
-		}
+		requireRoot("")
 
 		if err := config.Init(); err != nil {
 			return fmt.Errorf("config init: %w", err)

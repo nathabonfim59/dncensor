@@ -3,16 +3,21 @@
 ## Build & verify
 
 ```bash
-go build -o dncensor .
-go vet ./...
-go mod tidy            # after dep changes
+make build       # release binary (enforces root)
+make build-dev   # dev binary (skips root check)
+make vet         # go vet ./...
+make tidy        # go mod tidy
+make clean       # remove binaries
+make             # build + vet
 ```
 
-No tests, no CI, no Makefile.
+No tests, no CI.
 
 ## Root requirements
 
-- `dncensor` (TUI) and `dncensor set` check `os.Geteuid() != 0` at the cobra layer and exit.
+- Root enforcement is in `cmd/requireRoot()` via build tags:
+  - `cmd/rootcheck_release.go` (`//go:build !dev`) — checks `os.Geteuid() != 0` and exits.
+  - `cmd/rootcheck_dev.go` (`//go:build dev`) — no-op for UI testing.
 - `dncensor current` and `dncensor list-providers` work without root.
 - `Stack.RequiresRoot()` exists on the interface but is **never called** in production code.
 
@@ -37,11 +42,10 @@ list-providers --json, -j
 
 ## Known quirks
 
-1. **Flavor menu hardcoded to index 1** (`internal/tui/main.go:174`): `m.selectedIdx == 1`, not `p.SupportsFlavors()`. If provider order changes, CloudFlare flavor menu breaks.
-2. **DoH overwrites DNS IPs on systemd-resolved**: `SetDOH()` calls `resolvectl dns <iface> <url>`, replacing the IP-based nameservers set by `SetDNS()`. DoH + IP DNS cannot coexist.
-3. **Config paths are hardcoded** (`/etc/dncensor/`, `/etc/dncensor/backup/`). No env vars or flags to override.
-4. **No config file** (no TOML/YAML/JSON). Only state is backup snapshots in `/etc/dncensor/backup/`.
-5. **Backup files are timestamped** (no manifest, no metadata beyond filename prefix for stack type detection).
+1. **DoH overwrites DNS IPs on systemd-resolved**: `SetDOH()` calls `resolvectl dns <iface> <url>`, replacing the IP-based nameservers set by `SetDNS()`. DoH + IP DNS cannot coexist.
+1. **Config paths are hardcoded** (`/etc/dncensor/`, `/etc/dncensor/backup/`). No env vars or flags to override.
+1. **No config file** (no TOML/YAML/JSON). Only state is backup snapshots in `/etc/dncensor/backup/`.
+1. **Backup files are timestamped** (no manifest, no metadata beyond filename prefix for stack type detection).
 
 ## Stack-specific notes
 
