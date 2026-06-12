@@ -19,15 +19,16 @@ No tests, no CI.
   - `cmd/rootcheck_release.go` (`//go:build !dev`) — checks `os.Geteuid() != 0` and exits.
   - `cmd/rootcheck_dev.go` (`//go:build dev`) — no-op for UI testing.
 - `dncensor current` and `dncensor list-providers` work without root.
+- `dncensor backup list` requires root (reads `/etc/dncensor/snapshots/`).
 - `Stack.RequiresRoot()` exists on the interface but is **never called** in production code.
 
 ## Architecture
 
 - **Entrypoint**: `main.go` → `cmd.Execute()` → root command (TUI) or subcommand.
 - **Stack detection** (`internal/stack/stack.go:Detect()`): hardcoded order — systemd-resolved → NetworkManager → plain /etc/resolv.conf. First match wins.
-- **ISP is not a real DNS provider**: `NewISP()` has no IPs. `dns.Apply()` special-cases `ProviderISP` to call `restoreISP()` (restore from original backup). No backup → error.
-- **One-time original backup**: Only the first provider change saves the current DNS config as `original-{stacktype}.txt` in the backup dir. Subsequent non-ISP changes skip backup and just apply DNS directly.
-- **Automated restore**: All three `Restore()` methods read the `original-{stacktype}.txt` file and re-apply the saved DNS settings. This is used by `restoreISP()` to revert to the original config.
+- **ISP detection** (`internal/dhcp/detect.go:DetectOriginalDNS()`): finds the default route interface, then looks for DNS servers in DHCP lease files (dhcpcd → dhclient → systemd-networkd). Used by `NewISP().Resolve()` to dynamically determine the ISP's original DNS.
+- **User-driven backups** (`internal/backup/backup.go`): named snapshots with SHA256 hashes. No automatic backup — user explicitly creates with `dncensor backup create -n "name"`. Stored as JSON files in `/etc/dncensor/snapshots/<hash>.json`.
+- **Stack interface** (`internal/stack/stack.go`): `CaptureDNS() ([]byte, error)` returns raw DNS config; `ApplyDNS(content []byte) error` applies it. No more `Backup`/`Restore` with hardcoded file paths.
 
 ## CLI flags
 
@@ -39,20 +40,25 @@ set --provider, -p  (required)  isp|cloudflare|google
 
 current --json, -j
 list-providers --json, -j
+
+backup create --name, -n        backup name (prompted if empty)
+backup list
+backup restore <hash-or-name>   restore from backup
+backup delete <hash-or-name>    delete a backup
 ```
 
 ## Known quirks
 
 1. **DoH overwrites DNS IPs on systemd-resolved**: `SetDOH()` calls `resolvectl dns <iface> <url>`, replacing the IP-based nameservers set by `SetDNS()`. DoH + IP DNS cannot coexist.
-1. **Config paths are hardcoded** (`/etc/dncensor/`, `/etc/dncensor/backup/`). No env vars or flags to override.
-1. **No config file** (no TOML/YAML/JSON). Only state is one original backup snapshot per stack type in `/etc/dncensor/backup/`.
-1. **Backup files are fixed-name** (`original-{stacktype}.txt`). Only the first provider change creates one; subsequent changes skip backup.
+1. **Config paths are hardcoded** (`/etc/dncensor/`, `/etc/dncensor/snapshots/`). No env vars or flags to override.
+1. **No config file** (no TOML/YAML/JSON). Only state is user-created snapshots in `/etc/dncensor/snapshots/`.
+1. **DHCP detection is read-only**: reads lease files from `/var/lib/dhcpcd/`, `/var/lib/dhcp/`, or `/run/systemd/netif/leases/`. The first client with a valid lease wins.
 
 ## Stack-specific notes
 
-- **systemd-resolved**: `SetDNS` applies to every interface found in `resolvectl status`. Falls back to `lo` if parsing fails.
-- **NetworkManager**: Prefers ethernet over wifi for active connection selection.
-- **resolvconf**: Uses atomic write (temp file + rename). Preserves `search`/`domain` lines from existing config.
+- **systemd-resolved**: `SetDNS` applies to every interface found in `resolvectl status`. Falls back to `lo` if parsing fails. `CaptureDNS` runs `resolvectl dns`, `ApplyDNS` parses that format and re-applies per-interface.
+- **NetworkManager**: Prefers ethernet over wifi for active connection selection. `CaptureDNS` runs `nmcli -s -f ipv4.dns,ipv4.dns-search con show`, `ApplyDNS` re-applies via `nmcli con mod`.
+- **resolvconf**: Uses atomic write (temp file + rename). `CaptureDNS` reads the resolved target file, `ApplyDNS` writes it back.
 
 ## Using external libraries
 

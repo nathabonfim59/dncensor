@@ -5,13 +5,13 @@ import (
 )
 
 const (
-	AppName   = "dncensor"
-	ConfigDir = "/etc/dncensor"
-	BackupDir = "/etc/dncensor/backup"
+	AppName     = "dncensor"
+	ConfigDir   = "/etc/dncensor"
+	SnapshotsDir = "/etc/dncensor/snapshots"
 )
 
 func Init() error {
-	for _, dir := range []string{ConfigDir, BackupDir} {
+	for _, dir := range []string{ConfigDir, SnapshotsDir} {
 		if err := os.MkdirAll(dir, 0700); err != nil {
 			return err
 		}
@@ -19,6 +19,6 @@ func Init() error {
 	return nil
 }
 
-func BackupPath() string {
-	return BackupDir
+func SnapshotsPath() string {
+	return SnapshotsDir
 }

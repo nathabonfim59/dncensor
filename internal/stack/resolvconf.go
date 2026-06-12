@@ -100,27 +100,21 @@ func (s *resolvConfStack) SetDOH(endpoint string) error {
 	return fmt.Errorf("/etc/resolv.conf does not support DoH")
 }
 
-func (s *resolvConfStack) Backup(backupDir string) error {
+func (s *resolvConfStack) CaptureDNS() ([]byte, error) {
 	target, err := s.resolvePath()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	data, err := os.ReadFile(target)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	path := filepath.Join(backupDir, fmt.Sprintf("original-%s.txt", s.Type()))
-	return os.WriteFile(path, data, 0600)
+	return data, nil
 }
 
-func (s *resolvConfStack) Restore(backupDir string) error {
-	data, err := os.ReadFile(filepath.Join(backupDir, fmt.Sprintf("original-%s.txt", s.Type())))
-	if err != nil {
-		return fmt.Errorf("read backup: %w", err)
-	}
-
+func (s *resolvConfStack) ApplyDNS(content []byte) error {
 	target, err := s.resolvePath()
 	if err != nil {
 		return err
@@ -130,7 +124,7 @@ func (s *resolvConfStack) Restore(backupDir string) error {
 	if err != nil {
 		return fmt.Errorf("create temp: %w", err)
 	}
-	if _, err := tmp.Write(data); err != nil {
+	if _, err := tmp.Write(content); err != nil {
 		tmp.Close()
 		os.Remove(tmp.Name())
 		return fmt.Errorf("write temp: %w", err)

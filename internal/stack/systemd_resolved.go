@@ -2,9 +2,7 @@ package stack
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 )
 
@@ -88,23 +86,16 @@ func (s *systemdResolvedStack) SetDOH(endpoint string) error {
 	return nil
 }
 
-func (s *systemdResolvedStack) Backup(backupDir string) error {
-	dnsOut, err := exec.Command("resolvectl", "dns").Output()
+func (s *systemdResolvedStack) CaptureDNS() ([]byte, error) {
+	out, err := exec.Command("resolvectl", "dns").Output()
 	if err != nil {
-		return fmt.Errorf("backup resolvectl dns: %w", err)
+		return nil, fmt.Errorf("capture resolvectl dns: %w", err)
 	}
-
-	path := filepath.Join(backupDir, fmt.Sprintf("original-%s.txt", s.Type()))
-	return os.WriteFile(path, dnsOut, 0600)
+	return out, nil
 }
 
-func (s *systemdResolvedStack) Restore(backupDir string) error {
-	data, err := os.ReadFile(filepath.Join(backupDir, fmt.Sprintf("original-%s.txt", s.Type())))
-	if err != nil {
-		return fmt.Errorf("read backup: %w", err)
-	}
-
-	for _, line := range strings.Split(string(data), "\n") {
+func (s *systemdResolvedStack) ApplyDNS(content []byte) error {
+	for _, line := range strings.Split(string(content), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "Global:") {
 			continue
@@ -130,10 +121,10 @@ func (s *systemdResolvedStack) Restore(backupDir string) error {
 
 			args := append([]string{"dns", ifaceName}, dnsIps...)
 			if err := exec.Command("resolvectl", args...).Run(); err != nil {
-				return fmt.Errorf("restore resolvectl dns %s: %w", ifaceName, err)
+				return fmt.Errorf("apply resolvectl dns %s: %w", ifaceName, err)
 			}
 			if err := exec.Command("resolvectl", "domain", ifaceName, "~.").Run(); err != nil {
-				return fmt.Errorf("restore resolvectl domain %s: %w", ifaceName, err)
+				return fmt.Errorf("apply resolvectl domain %s: %w", ifaceName, err)
 			}
 		}
 	}

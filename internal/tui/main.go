@@ -2,8 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"github.com/charmbracelet/bubbletea"
 	"github.com/nathabonfim59/dncensor/internal/dns"
@@ -26,7 +24,6 @@ const (
 type Model struct {
 	state            state
 	stack            stack.Stack
-	backupDir        string
 
 	providers        []*provider.DNSProvider
 	selectedIdx      int
@@ -47,11 +44,10 @@ type Model struct {
 	height int
 }
 
-func NewModel(s stack.Stack, backupDir string) Model {
+func NewModel(s stack.Stack) Model {
 	m := Model{
 		state:       stateMainMenu,
 		stack:       s,
-		backupDir:   backupDir,
 		providers:   provider.AllProviders(),
 		selectedIdx: 0,
 	}
@@ -179,6 +175,16 @@ func (m Model) handleMainMenuEnter() (tea.Model, tea.Cmd) {
 	}
 
 	m.selectedFlavor = nil
+
+	if p.HasDynamicDNS() {
+		if _, err := provider.ISPDescribeDNS(); err != nil {
+			m.err = fmt.Errorf("detect ISP DNS from DHCP: %s", err)
+			return m, nil
+		}
+		m.state = stateConfirm
+		return m, nil
+	}
+
 	m.state = stateConfirm
 	return m, nil
 }
@@ -194,16 +200,10 @@ func (m Model) applyDNS() (tea.Model, tea.Cmd) {
 		cfg.FlavorName = m.selectedFlavor.FlavorName
 	}
 
-	result := dns.Apply(m.stack, cfg, m.backupDir)
+	result := dns.Apply(m.stack, cfg)
 	m.result = &result
 	m.state = stateResult
 	return m, nil
-}
-
-func (m *Model) hasBackup() bool {
-	originalPath := filepath.Join(m.backupDir, fmt.Sprintf("original-%s.txt", m.stack.Type()))
-	_, err := os.Stat(originalPath)
-	return err == nil
 }
 
 // ── View ────────────────────────────────────────────────────────────────
@@ -284,10 +284,6 @@ func (m Model) renderProviderList() string {
 		}
 		text := fmt.Sprintf("%s %s %s", cursor, radio, p.Name)
 
-		if p.Type == provider.ProviderISP && !m.hasBackup() {
-			items = append(items, ItemDimmedStyle.Render(text+" (no backup)"))
-			continue
-		}
 		if i == m.selectedIdx {
 			items = append(items, ItemSelectedStyle.Render(text))
 		} else {
@@ -325,6 +321,12 @@ func (m Model) renderSelectionInfo() string {
 	info := fmt.Sprintf("Selected: %s", m.selectedProvider.Name)
 	if m.selectedFlavor != nil {
 		info += fmt.Sprintf(" > %s", m.selectedFlavor.Display)
+	}
+	if m.selectedProvider.HasDynamicDNS() {
+		ips, err := provider.ISPDescribeDNS()
+		if err == nil {
+			info += fmt.Sprintf(" (%s)", ips)
+		}
 	}
 	return DimmedStyle.Render(info)
 }
@@ -390,6 +392,8 @@ func (m Model) confirmView() string {
 	}
 	if m.selectedFlavor != nil {
 		rows = append(rows, m.renderConfirmRow("Flavor:", m.selectedFlavor.Display))
+	} else if m.selectedProvider.HasDynamicDNS() {
+		rows = append(rows, m.renderConfirmRow("DNS:", fmt.Sprintf("%s / %s", primary, secondary)))
 	}
 	rows = append(rows,
 		m.renderConfirmRow("DoH:", fmt.Sprintf("%v", m.useDOH)),

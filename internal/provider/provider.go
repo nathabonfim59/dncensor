@@ -1,6 +1,11 @@
 package provider
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/nathabonfim59/dncensor/internal/dhcp"
+)
 
 type ProviderType string
 
@@ -43,6 +48,25 @@ func (p *DNSProvider) FindFlavor(name string) *DNSFlavor {
 }
 
 func (p *DNSProvider) Resolve(flavorName string, useDOH bool) (primary, secondary, dohEndpoint string, err error) {
+	if p.Type == ProviderISP {
+		ips, err := dhcp.DetectOriginalDNS()
+		if err != nil {
+			return "", "", "", fmt.Errorf("detect ISP DNS from DHCP: %w", err)
+		}
+		dohEndpoint = p.DOHEndpoint
+		primary = ips[0]
+		if len(ips) > 1 {
+			secondary = ips[1]
+		}
+		if useDOH && dohEndpoint == "" {
+			return primary, secondary, "", fmt.Errorf("DoH not supported for this provider/flavor")
+		}
+		if !useDOH {
+			dohEndpoint = ""
+		}
+		return primary, secondary, dohEndpoint, nil
+	}
+
 	if flavorName != "" {
 		flavor := p.FindFlavor(flavorName)
 		if flavor == nil {
@@ -66,6 +90,27 @@ func (p *DNSProvider) Resolve(flavorName string, useDOH bool) (primary, secondar
 	}
 
 	return primary, secondary, dohEndpoint, nil
+}
+
+func (p *DNSProvider) HasDynamicDNS() bool {
+	return p.Type == ProviderISP
+}
+
+func (p *DNSProvider) DescribeDNS(flavorName string) string {
+	if p.Type == ProviderISP {
+		ips, err := dhcp.DetectOriginalDNS()
+		if err != nil {
+			return "Unknown (DHCP detection failed)"
+		}
+		return fmt.Sprintf("DHCP: %s", strings.Join(ips, ", "))
+	}
+	if flavorName != "" {
+		flavor := p.FindFlavor(flavorName)
+		if flavor != nil {
+			return fmt.Sprintf("%s / %s", flavor.PrimaryDNS, flavor.SecondaryDNS)
+		}
+	}
+	return fmt.Sprintf("%s / %s", p.PrimaryDNS, p.SecondaryDNS)
 }
 
 func AllProviders() []*DNSProvider {

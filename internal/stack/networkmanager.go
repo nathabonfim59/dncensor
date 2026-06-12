@@ -2,9 +2,7 @@ package stack
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 )
 
@@ -102,35 +100,29 @@ func (s *nmStack) SetDOH(endpoint string) error {
 	return fmt.Errorf("NetworkManager does not support DoH natively")
 }
 
-func (s *nmStack) Backup(backupDir string) error {
+func (s *nmStack) CaptureDNS() ([]byte, error) {
 	conn, err := s.activeConnection()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	out, err := exec.Command("nmcli", "-s", "-f", "ipv4.dns,ipv4.dns-search", "con", "show", conn).Output()
 	if err != nil {
-		return fmt.Errorf("backup nmcli: %w", err)
+		return nil, fmt.Errorf("capture nmcli: %w", err)
 	}
 
-	path := filepath.Join(backupDir, fmt.Sprintf("original-%s.txt", s.Type()))
-	return os.WriteFile(path, out, 0600)
+	return out, nil
 }
 
-func (s *nmStack) Restore(backupDir string) error {
+func (s *nmStack) ApplyDNS(content []byte) error {
 	conn, err := s.activeConnection()
 	if err != nil {
 		return err
 	}
 
-	data, err := os.ReadFile(filepath.Join(backupDir, fmt.Sprintf("original-%s.txt", s.Type())))
-	if err != nil {
-		return fmt.Errorf("read backup: %w", err)
-	}
-
 	var dnsVals []string
 	var searchDomains []string
-	for _, line := range strings.Split(string(data), "\n") {
+	for _, line := range strings.Split(string(content), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -159,7 +151,7 @@ func (s *nmStack) Restore(backupDir string) error {
 	} else {
 		dnsStr := strings.Join(dnsVals, " ")
 		if err := exec.Command("nmcli", "con", "mod", conn, "ipv4.dns", dnsStr).Run(); err != nil {
-			return fmt.Errorf("nmcli con mod restore dns: %w", err)
+			return fmt.Errorf("nmcli con mod apply dns: %w", err)
 		}
 		if err := exec.Command("nmcli", "con", "mod", conn, "ipv4.ignore-auto-dns", "yes").Run(); err != nil {
 			return fmt.Errorf("nmcli con mod ignore-auto-dns: %w", err)

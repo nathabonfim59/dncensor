@@ -6,7 +6,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/nathabonfim59/dncensor/internal/config"
 	"github.com/nathabonfim59/dncensor/internal/dns"
 	"github.com/nathabonfim59/dncensor/internal/provider"
 	"github.com/nathabonfim59/dncensor/internal/stack"
@@ -72,6 +71,11 @@ Examples:
 					fmt.Printf("  Flavor:   %s\n", flavor.Display)
 				}
 			}
+			if p.HasDynamicDNS() || flavorFlag != "" {
+				fmt.Printf("  DNS:      %s\n", p.DescribeDNS(flavorFlag))
+			} else {
+				fmt.Printf("  DNS:      %s / %s\n", p.PrimaryDNS, p.SecondaryDNS)
+			}
 			fmt.Printf("  DoH:      %v\n", dohFlag)
 			fmt.Print("Continue? [y/N]: ")
 
@@ -83,7 +87,7 @@ Examples:
 			}
 		}
 
-		result := dns.Apply(s, cfg, config.BackupPath())
+		result := dns.Apply(s, cfg)
 		if result.Success {
 			fmt.Println(result.Message)
 		} else {

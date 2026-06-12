@@ -7,7 +7,6 @@ import (
 	"github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 
-	"github.com/nathabonfim59/dncensor/internal/config"
 	"github.com/nathabonfim59/dncensor/internal/stack"
 	"github.com/nathabonfim59/dncensor/internal/tui"
 )
@@ -23,7 +22,10 @@ Examples:
   dncensor set -p cloudflare         # Set CloudFlare DNS
   dncensor set -p cloudflare -f malware --doh
   dncensor current                   # Show current DNS
-  dncensor list-providers            # List available providers`,
+  dncensor list-providers            # List available providers
+  dncensor backup create -n "before" # Save a named backup
+  dncensor backup list               # List saved backups
+  dncensor backup restore <name>     # Restore from backup`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		requireRoot("")
 
@@ -36,7 +38,7 @@ Examples:
 			return fmt.Errorf("no supported DNS stack found")
 		}
 
-		m := tui.NewModel(s, config.BackupPath())
+		m := tui.NewModel(s)
 		p := tea.NewProgram(m)
 		if _, err := p.Run(); err != nil {
 			return err
@@ -56,4 +58,5 @@ func init() {
 	rootCmd.AddCommand(setCmd)
 	rootCmd.AddCommand(currentCmd)
 	rootCmd.AddCommand(listProvidersCmd)
+	rootCmd.AddCommand(backupCmd)
 }

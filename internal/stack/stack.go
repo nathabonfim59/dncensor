@@ -14,8 +14,8 @@ type Stack interface {
 	CurrentDNS() (string, error)
 	SetDNS(primary, secondary string) error
 	SetDOH(endpoint string) error
-	Backup(backupDir string) error
-	Restore(backupDir string) error
+	CaptureDNS() ([]byte, error)
+	ApplyDNS(content []byte) error
 	RequiresRoot() bool
 }
 
