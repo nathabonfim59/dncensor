@@ -2,13 +2,12 @@ package config
 
 import (
 	"os"
-	"path/filepath"
 )
 
 const (
-	AppName    = "dncensor"
-	ConfigDir  = "/etc/dncensor"
-	BackupDir  = "/etc/dncensor/backup"
+	AppName   = "dncensor"
+	ConfigDir = "/etc/dncensor"
+	BackupDir = "/etc/dncensor/backup"
 )
 
 func Init() error {
@@ -22,8 +21,4 @@ func Init() error {
 
 func BackupPath() string {
 	return BackupDir
-}
-
-func ManifestPath() string {
-	return filepath.Join(BackupDir, "manifest.json")
 }

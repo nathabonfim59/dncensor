@@ -2,9 +2,10 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/charmbracelet/bubbletea"
-	"github.com/nathabonfim59/dncensor/internal/backup"
 	"github.com/nathabonfim59/dncensor/internal/dns"
 	"github.com/nathabonfim59/dncensor/internal/provider"
 	"github.com/nathabonfim59/dncensor/internal/stack"
@@ -26,7 +27,6 @@ type Model struct {
 	state            state
 	stack            stack.Stack
 	backupDir        string
-	backupManager    *backup.BackupManager
 
 	providers        []*provider.DNSProvider
 	selectedIdx      int
@@ -49,12 +49,11 @@ type Model struct {
 
 func NewModel(s stack.Stack, backupDir string) Model {
 	m := Model{
-		state:         stateMainMenu,
-		stack:         s,
-		backupDir:     backupDir,
-		backupManager: backup.New(backupDir),
-		providers:     provider.AllProviders(),
-		selectedIdx:   0,
+		state:       stateMainMenu,
+		stack:       s,
+		backupDir:   backupDir,
+		providers:   provider.AllProviders(),
+		selectedIdx: 0,
 	}
 	m.currentProvider, m.currentFlavor, _ = provider.DetectCurrentProvider(s)
 	return m
@@ -201,7 +200,8 @@ func (m Model) applyDNS() (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) hasBackup() bool {
-	_, err := m.backupManager.Latest(string(m.stack.Type()))
+	originalPath := filepath.Join(m.backupDir, fmt.Sprintf("original-%s.txt", m.stack.Type()))
+	_, err := os.Stat(originalPath)
 	return err == nil
 }
 

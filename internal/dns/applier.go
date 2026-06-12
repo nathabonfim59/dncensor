@@ -2,16 +2,17 @@ package dns
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
-	"github.com/nathabonfim59/dncensor/internal/backup"
 	"github.com/nathabonfim59/dncensor/internal/provider"
 	"github.com/nathabonfim59/dncensor/internal/stack"
 )
 
 type ApplyConfig struct {
-	Provider    *provider.DNSProvider
-	FlavorName  string
-	UseDOH      bool
+	Provider   *provider.DNSProvider
+	FlavorName string
+	UseDOH     bool
 }
 
 type ApplyResult struct {
@@ -21,12 +22,10 @@ type ApplyResult struct {
 }
 
 func Apply(s stack.Stack, cfg ApplyConfig, backupDir string) ApplyResult {
-	// ISP = restore from backup
 	if cfg.Provider.Type == provider.ProviderISP {
 		return restoreISP(s, backupDir)
 	}
 
-	// Resolve DNS servers
 	primary, secondary, dohEndpoint, err := cfg.Provider.Resolve(cfg.FlavorName, cfg.UseDOH)
 	if err != nil {
 		return ApplyResult{
@@ -36,16 +35,17 @@ func Apply(s stack.Stack, cfg ApplyConfig, backupDir string) ApplyResult {
 		}
 	}
 
-	// Backup current config
-	if err := s.Backup(backupDir); err != nil {
-		return ApplyResult{
-			Success:     false,
-			Message:     fmt.Sprintf("Failed to backup current DNS config: %s", err),
-			ApplyConfig: cfg,
+	originalPath := filepath.Join(backupDir, fmt.Sprintf("original-%s.txt", s.Type()))
+	if _, err := os.Stat(originalPath); os.IsNotExist(err) {
+		if err := s.Backup(backupDir); err != nil {
+			return ApplyResult{
+				Success:     false,
+				Message:     fmt.Sprintf("Failed to backup original DNS config: %s", err),
+				ApplyConfig: cfg,
+			}
 		}
 	}
 
-	// Apply DNS servers
 	if err := s.SetDNS(primary, secondary); err != nil {
 		return ApplyResult{
 			Success:     false,
@@ -62,7 +62,6 @@ func Apply(s stack.Stack, cfg ApplyConfig, backupDir string) ApplyResult {
 		}
 	}
 
-	// Apply DoH if requested
 	if cfg.UseDOH && dohEndpoint != "" {
 		if err := s.SetDOH(dohEndpoint); err != nil {
 			msg += fmt.Sprintf(". DNS servers applied but DoH failed: %s", err)
@@ -79,23 +78,18 @@ func Apply(s stack.Stack, cfg ApplyConfig, backupDir string) ApplyResult {
 }
 
 func restoreISP(s stack.Stack, backupDir string) ApplyResult {
-	bm := backup.New(backupDir)
-
-	record, err := bm.Latest(string(s.Type()))
-	if err != nil {
+	originalPath := filepath.Join(backupDir, fmt.Sprintf("original-%s.txt", s.Type()))
+	if _, err := os.Stat(originalPath); os.IsNotExist(err) {
 		return ApplyResult{
 			Success: false,
-			Message: "No ISP backup found. Apply a non-ISP provider first to create a backup.",
+			Message: "No original ISP backup found. Apply a non-ISP provider first to create a backup.",
 		}
 	}
 
-	if err := s.Restore(record.BackupPath); err != nil {
-		// Fallback: try to restore from specific stack restore method
-		if err2 := s.Restore(backupDir); err2 != nil {
-			return ApplyResult{
-				Success: false,
-				Message: fmt.Sprintf("Failed to restore ISP settings: %s", err2),
-			}
+	if err := s.Restore(backupDir); err != nil {
+		return ApplyResult{
+			Success: false,
+			Message: fmt.Sprintf("Failed to restore ISP settings: %s", err),
 		}
 	}
 

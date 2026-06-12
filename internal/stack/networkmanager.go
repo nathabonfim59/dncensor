@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 type nmStack struct{}
@@ -109,18 +108,74 @@ func (s *nmStack) Backup(backupDir string) error {
 		return err
 	}
 
-	ts := time.Now().Format("2006-01-02T15-04-05")
-	out, err := exec.Command("nmcli", "con", "show", conn).Output()
+	out, err := exec.Command("nmcli", "-s", "-f", "ipv4.dns,ipv4.dns-search", "con", "show", conn).Output()
 	if err != nil {
 		return fmt.Errorf("backup nmcli: %w", err)
 	}
 
-	path := filepath.Join(backupDir, fmt.Sprintf("nm-%s-%s.txt", conn, ts))
+	path := filepath.Join(backupDir, fmt.Sprintf("original-%s.txt", s.Type()))
 	return os.WriteFile(path, out, 0600)
 }
 
 func (s *nmStack) Restore(backupDir string) error {
-	return fmt.Errorf("automatic restore for NetworkManager not implemented; backup files are at %s", backupDir)
+	conn, err := s.activeConnection()
+	if err != nil {
+		return err
+	}
+
+	data, err := os.ReadFile(filepath.Join(backupDir, fmt.Sprintf("original-%s.txt", s.Type())))
+	if err != nil {
+		return fmt.Errorf("read backup: %w", err)
+	}
+
+	var dnsVals []string
+	var searchDomains []string
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "ipv4.dns:") {
+			val := strings.TrimSpace(strings.TrimPrefix(line, "ipv4.dns:"))
+			if val != "" {
+				dnsVals = strings.Fields(val)
+			}
+		}
+		if strings.HasPrefix(line, "ipv4.dns-search:") {
+			val := strings.TrimSpace(strings.TrimPrefix(line, "ipv4.dns-search:"))
+			if val != "" {
+				searchDomains = strings.Fields(val)
+			}
+		}
+	}
+
+	if len(dnsVals) == 0 {
+		if err := exec.Command("nmcli", "con", "mod", conn, "ipv4.dns", "").Run(); err != nil {
+			return fmt.Errorf("nmcli con mod clear dns: %w", err)
+		}
+		if err := exec.Command("nmcli", "con", "mod", conn, "ipv4.ignore-auto-dns", "no").Run(); err != nil {
+			return fmt.Errorf("nmcli con mod ignore-auto-dns: %w", err)
+		}
+	} else {
+		dnsStr := strings.Join(dnsVals, " ")
+		if err := exec.Command("nmcli", "con", "mod", conn, "ipv4.dns", dnsStr).Run(); err != nil {
+			return fmt.Errorf("nmcli con mod restore dns: %w", err)
+		}
+		if err := exec.Command("nmcli", "con", "mod", conn, "ipv4.ignore-auto-dns", "yes").Run(); err != nil {
+			return fmt.Errorf("nmcli con mod ignore-auto-dns: %w", err)
+		}
+	}
+
+	if len(searchDomains) > 0 {
+		searchStr := strings.Join(searchDomains, " ")
+		exec.Command("nmcli", "con", "mod", conn, "ipv4.dns-search", searchStr).Run()
+	}
+
+	if err := exec.Command("nmcli", "con", "up", conn).Run(); err != nil {
+		return fmt.Errorf("nmcli con up: %w", err)
+	}
+
+	return nil
 }
 
 func (s *nmStack) RequiresRoot() bool {

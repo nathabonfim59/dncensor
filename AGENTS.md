@@ -25,8 +25,9 @@ No tests, no CI.
 
 - **Entrypoint**: `main.go` → `cmd.Execute()` → root command (TUI) or subcommand.
 - **Stack detection** (`internal/stack/stack.go:Detect()`): hardcoded order — systemd-resolved → NetworkManager → plain /etc/resolv.conf. First match wins.
-- **ISP is not a real DNS provider**: `NewISP()` has no IPs. `dns.Apply()` special-cases `ProviderISP` to call `restoreISP()` (backup restore). No backup → error.
-- **No automated restore**: All three `Restore()` methods return an error pointing to the backup dir. `restoreISP()` tries to use the file at `BackupRecord.BackupPath` but falls through to the same failing method.
+- **ISP is not a real DNS provider**: `NewISP()` has no IPs. `dns.Apply()` special-cases `ProviderISP` to call `restoreISP()` (restore from original backup). No backup → error.
+- **One-time original backup**: Only the first provider change saves the current DNS config as `original-{stacktype}.txt` in the backup dir. Subsequent non-ISP changes skip backup and just apply DNS directly.
+- **Automated restore**: All three `Restore()` methods read the `original-{stacktype}.txt` file and re-apply the saved DNS settings. This is used by `restoreISP()` to revert to the original config.
 
 ## CLI flags
 
@@ -44,8 +45,8 @@ list-providers --json, -j
 
 1. **DoH overwrites DNS IPs on systemd-resolved**: `SetDOH()` calls `resolvectl dns <iface> <url>`, replacing the IP-based nameservers set by `SetDNS()`. DoH + IP DNS cannot coexist.
 1. **Config paths are hardcoded** (`/etc/dncensor/`, `/etc/dncensor/backup/`). No env vars or flags to override.
-1. **No config file** (no TOML/YAML/JSON). Only state is backup snapshots in `/etc/dncensor/backup/`.
-1. **Backup files are timestamped** (no manifest, no metadata beyond filename prefix for stack type detection).
+1. **No config file** (no TOML/YAML/JSON). Only state is one original backup snapshot per stack type in `/etc/dncensor/backup/`.
+1. **Backup files are fixed-name** (`original-{stacktype}.txt`). Only the first provider change creates one; subsequent changes skip backup.
 
 ## Stack-specific notes
 

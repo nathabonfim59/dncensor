@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 type resolvConfStack struct{}
@@ -107,17 +106,43 @@ func (s *resolvConfStack) Backup(backupDir string) error {
 		return err
 	}
 
-	ts := time.Now().Format("2006-01-02T15-04-05")
 	data, err := os.ReadFile(target)
 	if err != nil {
 		return err
 	}
 
-	return os.WriteFile(filepath.Join(backupDir, fmt.Sprintf("resolv.conf.bak-%s", ts)), data, 0600)
+	path := filepath.Join(backupDir, fmt.Sprintf("original-%s.txt", s.Type()))
+	return os.WriteFile(path, data, 0600)
 }
 
 func (s *resolvConfStack) Restore(backupDir string) error {
-	return fmt.Errorf("automatic restore for resolv.conf not implemented; backup files are at %s", backupDir)
+	data, err := os.ReadFile(filepath.Join(backupDir, fmt.Sprintf("original-%s.txt", s.Type())))
+	if err != nil {
+		return fmt.Errorf("read backup: %w", err)
+	}
+
+	target, err := s.resolvePath()
+	if err != nil {
+		return err
+	}
+
+	tmp, err := os.CreateTemp(filepath.Dir(target), ".resolv.conf.*")
+	if err != nil {
+		return fmt.Errorf("create temp: %w", err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return fmt.Errorf("write temp: %w", err)
+	}
+	tmp.Close()
+
+	if err := os.Rename(tmp.Name(), target); err != nil {
+		os.Remove(tmp.Name())
+		return fmt.Errorf("rename %s -> %s: %w", tmp.Name(), target, err)
+	}
+
+	return nil
 }
 
 func (s *resolvConfStack) RequiresRoot() bool {

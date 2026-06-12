@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 type systemdResolvedStack struct{}
@@ -90,28 +89,56 @@ func (s *systemdResolvedStack) SetDOH(endpoint string) error {
 }
 
 func (s *systemdResolvedStack) Backup(backupDir string) error {
-	ts := time.Now().Format("2006-01-02T15-04-05")
-
-	statusOut, err := exec.Command("resolvectl", "status").Output()
-	if err != nil {
-		return fmt.Errorf("backup resolvectl status: %w", err)
-	}
-	if err := os.WriteFile(filepath.Join(backupDir, fmt.Sprintf("resolved-%s.txt", ts)), statusOut, 0600); err != nil {
-		return err
-	}
-
 	dnsOut, err := exec.Command("resolvectl", "dns").Output()
-	if err == nil {
-		os.WriteFile(filepath.Join(backupDir, fmt.Sprintf("resolved-dns-%s.txt", ts)), dnsOut, 0600)
+	if err != nil {
+		return fmt.Errorf("backup resolvectl dns: %w", err)
 	}
 
-	return nil
+	path := filepath.Join(backupDir, fmt.Sprintf("original-%s.txt", s.Type()))
+	return os.WriteFile(path, dnsOut, 0600)
 }
 
 func (s *systemdResolvedStack) Restore(backupDir string) error {
-	// For restore, we try to re-apply the previous DNS from backup files
-	// This is best-effort; the full state is saved for manual recovery
-	return fmt.Errorf("automatic restore for systemd-resolved not implemented; backup files are at %s", backupDir)
+	data, err := os.ReadFile(filepath.Join(backupDir, fmt.Sprintf("original-%s.txt", s.Type())))
+	if err != nil {
+		return fmt.Errorf("read backup: %w", err)
+	}
+
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "Global:") {
+			continue
+		}
+		if strings.HasPrefix(line, "Link ") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) < 2 {
+				continue
+			}
+			ifacePart := strings.TrimPrefix(parts[0], "Link ")
+			ifaceName := ""
+			if idx := strings.Index(ifacePart, "("); idx != -1 {
+				ifaceName = strings.TrimSuffix(ifacePart[idx+1:], ")")
+			}
+			if ifaceName == "" {
+				continue
+			}
+
+			dnsIps := strings.Fields(strings.TrimSpace(parts[1]))
+			if len(dnsIps) == 0 {
+				continue
+			}
+
+			args := append([]string{"dns", ifaceName}, dnsIps...)
+			if err := exec.Command("resolvectl", args...).Run(); err != nil {
+				return fmt.Errorf("restore resolvectl dns %s: %w", ifaceName, err)
+			}
+			if err := exec.Command("resolvectl", "domain", ifaceName, "~.").Run(); err != nil {
+				return fmt.Errorf("restore resolvectl domain %s: %w", ifaceName, err)
+			}
+		}
+	}
+
+	return nil
 }
 
 func (s *systemdResolvedStack) RequiresRoot() bool {
