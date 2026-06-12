@@ -121,7 +121,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.handleMainMenuEnter()
 			case stateFlavorMenu:
 				m.selectedFlavor = &m.selectedProvider.Flavors[m.flavorIdx]
-				m.state = stateMainMenu
+				m.state = stateConfirm
 				return m, nil
 			case stateConfirm:
 				return m.applyDNS()
@@ -179,6 +179,7 @@ func (m Model) handleMainMenuEnter() (tea.Model, tea.Cmd) {
 	}
 
 	m.selectedFlavor = nil
+	m.state = stateConfirm
 	return m, nil
 }
 
