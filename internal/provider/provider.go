@@ -16,6 +16,7 @@ const (
 	ProviderISP        ProviderType = "isp"
 	ProviderCloudFlare ProviderType = "cloudflare"
 	ProviderGoogle     ProviderType = "google"
+	ProviderQuad9      ProviderType = "quad9"
 )
 
 type DNSFlavor struct {
@@ -121,6 +122,7 @@ func AllProviders() []*DNSProvider {
 		NewISP(),
 		NewCloudFlare(),
 		NewGoogle(),
+		NewQuad9(),
 	}
 }
 

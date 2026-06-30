@@ -43,7 +43,7 @@ Examples:
 
 		p := provider.FindProvider(provider.ProviderType(providerFlag))
 		if p == nil {
-			return fmt.Errorf("unknown provider: %s (use: isp, cloudflare, google)", providerFlag)
+			return fmt.Errorf("unknown provider: %s (use: isp, cloudflare, google, quad9)", providerFlag)
 		}
 
 		if flavorFlag != "" && !p.SupportsFlavors() {
@@ -100,7 +100,7 @@ Examples:
 }
 
 func init() {
-	setCmd.Flags().StringVarP(&providerFlag, "provider", "p", "", "DNS provider (isp, cloudflare, google)")
+	setCmd.Flags().StringVarP(&providerFlag, "provider", "p", "", "DNS provider (isp, cloudflare, google, quad9)")
 	setCmd.Flags().StringVarP(&flavorFlag, "flavor", "f", "", "Provider flavor (e.g., standard, malware, adult)")
 	setCmd.Flags().BoolVar(&dohFlag, "doh", false, "Enable DNS-over-HTTPS")
 	setCmd.Flags().BoolVarP(&yesFlag, "yes", "y", false, "Skip confirmation prompt")
