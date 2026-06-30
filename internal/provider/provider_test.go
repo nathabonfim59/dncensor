@@ -146,6 +146,42 @@ func TestGoogle_Resolve_FlavorUnsupported(t *testing.T) {
 	}
 }
 
+func TestQuad9_Resolve_Default(t *testing.T) {
+	p := FindProvider(ProviderQuad9)
+	primary, secondary, doh, err := p.Resolve("", false)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if primary != "9.9.9.9" {
+		t.Errorf("primary = %q, want %q", primary, "9.9.9.9")
+	}
+	if secondary != "149.112.112.112" {
+		t.Errorf("secondary = %q, want %q", secondary, "149.112.112.112")
+	}
+	if doh != "" {
+		t.Errorf("doh = %q, want empty", doh)
+	}
+}
+
+func TestQuad9_Resolve_WithDOH(t *testing.T) {
+	p := FindProvider(ProviderQuad9)
+	_, _, doh, err := p.Resolve("", true)
+	if err != nil {
+		t.Fatalf("Resolve() with DoH error = %v", err)
+	}
+	if doh != "https://dns.quad9.net/dns-query" {
+		t.Errorf("doh = %q, want %q", doh, "https://dns.quad9.net/dns-query")
+	}
+}
+
+func TestQuad9_Resolve_FlavorUnsupported(t *testing.T) {
+	p := FindProvider(ProviderQuad9)
+	_, _, _, err := p.Resolve("standard", false)
+	if err == nil {
+		t.Fatal("expected error for flavor on Quad9 provider, got nil")
+	}
+}
+
 func TestISP_Resolve_FromDHCP(t *testing.T) {
 	p := FindProvider(ProviderISP)
 	if p == nil {
@@ -361,8 +397,8 @@ func TestFindFlavor_NotFound(t *testing.T) {
 
 func TestAllProviders(t *testing.T) {
 	providers := AllProviders()
-	if len(providers) != 3 {
-		t.Errorf("AllProviders() returned %d providers, want 3", len(providers))
+	if len(providers) != 4 {
+		t.Errorf("AllProviders() returned %d providers, want 4", len(providers))
 	}
 
 	types := make(map[ProviderType]bool)
@@ -377,5 +413,8 @@ func TestAllProviders(t *testing.T) {
 	}
 	if !types[ProviderGoogle] {
 		t.Error("missing Google provider")
+	}
+	if !types[ProviderQuad9] {
+		t.Error("missing Quad9 provider")
 	}
 }
