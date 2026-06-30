@@ -1,0 +1,57 @@
+version: 2
+
+project_name: dncensor
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: dncensor
+    main: .
+    binary: dncensor
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    format_overrides:
+      - goos: linux
+        formats: [tar.gz]
+
+nfpms:
+  - id: dncensor
+    package_name: dncensor
+    file_name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    vendor: nathabonfim59
+    homepage: https://github.com/nathabonfim59/dncensor
+    maintainer: nathabonfim59 <nathabonfim59@users.noreply.github.com>
+    description: >-
+      Do Not Censor — DNS provider switcher for Linux. Detects your DNS stack
+      (systemd-resolved, NetworkManager, resolv.conf) and lets you switch
+      between providers (ISP, Cloudflare, Google) and flavors (standard,
+      malware, adult), with DNS-over-HTTPS support and named backups.
+    license: MIT
+    formats:
+      - deb
+      - rpm
+      - archlinux
+      - apk
+
+release:
+  draft: false
+  prerelease: auto
+  name_template: "{{ .Tag }}"
